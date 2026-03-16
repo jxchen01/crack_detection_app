@@ -21,6 +21,7 @@ const issuesListEl = document.getElementById("issuesList");
 let stream = null;
 let capturedDataUrl = "";
 let captureLocked = false;
+let previewObjectUrl = "";
 
 const SYSTEM_PROMPT = `You are a strict visual quality inspector.
 Task: inspect ONE photographed object expected to be a circle with uniform texture.
@@ -51,6 +52,30 @@ confidence must be between 0 and 1.`;
 
 function setStatus(message) {
   cameraStatusEl.textContent = message;
+}
+
+function releasePreviewObjectUrl() {
+  if (!previewObjectUrl) {
+    return;
+  }
+
+  URL.revokeObjectURL(previewObjectUrl);
+  previewObjectUrl = "";
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to convert image blob to data URL."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
 }
 
 function setAnalyzePreviewVisual(isAnalyzing) {
@@ -162,7 +187,7 @@ async function startCamera() {
   }
 }
 
-function capturePhoto() {
+async function capturePhoto() {
   if (!stream) {
     setStatus("Start camera first.");
     return;
@@ -182,8 +207,20 @@ function capturePhoto() {
   const ctx = snapshotEl.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(cameraEl, 0, 0, width, height);
 
-  capturedDataUrl = snapshotEl.toDataURL("image/jpeg", 0.92);
-  previewEl.src = capturedDataUrl;
+  try {
+    const blob = await canvasToBlob(snapshotEl, "image/jpeg", 0.9);
+    if (!blob) {
+      throw new Error("Could not create photo blob from canvas.");
+    }
+
+    releasePreviewObjectUrl();
+    previewObjectUrl = URL.createObjectURL(blob);
+    previewEl.src = previewObjectUrl;
+    capturedDataUrl = await blobToDataUrl(blob);
+  } catch (error) {
+    setStatus(`Failed to create preview: ${error.message}`);
+    return;
+  }
 
   showCapturedPreview();
   stopCameraStream();
@@ -202,6 +239,7 @@ async function retakePhoto() {
   }
 
   capturedDataUrl = "";
+  releasePreviewObjectUrl();
   previewEl.src = "";
   setAnalyzePreviewVisual(false);
   setStatus("Retake mode active. Opening camera...");
@@ -312,6 +350,7 @@ function clearScreen() {
   updateCameraToggleLabel();
 
   capturedDataUrl = "";
+  releasePreviewObjectUrl();
   previewEl.src = "";
   setAnalyzePreviewVisual(false);
   previewEl.hidden = true;
@@ -334,4 +373,5 @@ setAnalyzePreviewVisual(false);
 
 window.addEventListener("beforeunload", () => {
   stopCameraStream();
+  releasePreviewObjectUrl();
 });
