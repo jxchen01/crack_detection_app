@@ -93,7 +93,8 @@ h1 {
   pointer-events: none;
 }
 
-.camera-wrap.is-analyzing #camera {
+.camera-wrap.is-analyzing #camera,
+.camera-wrap.is-analyzing #photoPreview {
   filter: brightness(0.72) saturate(0.8);
 }
 
@@ -163,6 +164,7 @@ select:focus {
 }
 
 video,
+#photoPreview,
 #preview,
 #previewCanvas {
   width: 100%;
