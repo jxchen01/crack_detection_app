@@ -1,6 +1,7 @@
 const cameraEl = document.getElementById("camera");
 const snapshotEl = document.getElementById("snapshot");
 const previewEl = document.getElementById("preview");
+const previewCanvasEl = document.getElementById("previewCanvas");
 const modelNameEl = document.getElementById("modelName"); // <select> element — .value gives the chosen model id
 const capturePanelEl = document.getElementById("capturePanel");
 const cameraWrapEl = document.getElementById("cameraWrap");
@@ -21,7 +22,6 @@ const issuesListEl = document.getElementById("issuesList");
 let stream = null;
 let capturedDataUrl = "";
 let captureLocked = false;
-let previewObjectUrl = "";
 
 const SYSTEM_PROMPT = `You are a strict visual quality inspector.
 Task: inspect ONE photographed object expected to be a circle with uniform texture.
@@ -54,30 +54,6 @@ function setStatus(message) {
   cameraStatusEl.textContent = message;
 }
 
-function releasePreviewObjectUrl() {
-  if (!previewObjectUrl) {
-    return;
-  }
-
-  URL.revokeObjectURL(previewObjectUrl);
-  previewObjectUrl = "";
-}
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Failed to convert image blob to data URL."));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function canvasToBlob(canvas, type, quality) {
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), type, quality);
-  });
-}
-
 function setAnalyzePreviewVisual(isAnalyzing) {
   cameraWrapEl.classList.toggle("is-analyzing", isAnalyzing);
 }
@@ -85,11 +61,13 @@ function setAnalyzePreviewVisual(isAnalyzing) {
 function showLiveCamera() {
   cameraEl.hidden = false;
   previewEl.hidden = true;
+  previewCanvasEl.hidden = true;
 }
 
 function showCapturedPreview() {
   cameraEl.hidden = true;
-  previewEl.hidden = false;
+  previewEl.hidden = true;
+  previewCanvasEl.hidden = false;
 }
 
 function setCaptureLocked(locked) {
@@ -187,7 +165,7 @@ async function startCamera() {
   }
 }
 
-async function capturePhoto() {
+function capturePhoto() {
   if (!stream) {
     setStatus("Start camera first.");
     return;
@@ -203,24 +181,16 @@ async function capturePhoto() {
 
   snapshotEl.width = width;
   snapshotEl.height = height;
+  previewCanvasEl.width = width;
+  previewCanvasEl.height = height;
 
-  const ctx = snapshotEl.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(cameraEl, 0, 0, width, height);
+  const captureCtx = snapshotEl.getContext("2d", { willReadFrequently: true });
+  captureCtx.drawImage(cameraEl, 0, 0, width, height);
 
-  try {
-    const blob = await canvasToBlob(snapshotEl, "image/jpeg", 0.9);
-    if (!blob) {
-      throw new Error("Could not create photo blob from canvas.");
-    }
+  const previewCtx = previewCanvasEl.getContext("2d", { willReadFrequently: true });
+  previewCtx.drawImage(snapshotEl, 0, 0, width, height);
 
-    releasePreviewObjectUrl();
-    previewObjectUrl = URL.createObjectURL(blob);
-    previewEl.src = previewObjectUrl;
-    capturedDataUrl = await blobToDataUrl(blob);
-  } catch (error) {
-    setStatus(`Failed to create preview: ${error.message}`);
-    return;
-  }
+  capturedDataUrl = snapshotEl.toDataURL("image/jpeg", 0.9);
 
   showCapturedPreview();
   stopCameraStream();
@@ -239,7 +209,6 @@ async function retakePhoto() {
   }
 
   capturedDataUrl = "";
-  releasePreviewObjectUrl();
   previewEl.src = "";
   setAnalyzePreviewVisual(false);
   setStatus("Retake mode active. Opening camera...");
@@ -350,10 +319,10 @@ function clearScreen() {
   updateCameraToggleLabel();
 
   capturedDataUrl = "";
-  releasePreviewObjectUrl();
   previewEl.src = "";
   setAnalyzePreviewVisual(false);
   previewEl.hidden = true;
+  previewCanvasEl.hidden = true;
   cameraEl.hidden = true;
 
   setCaptureLocked(false);
@@ -369,9 +338,9 @@ clearResultBtn.addEventListener("click", clearScreen);
 
 updateCameraToggleLabel();
 cameraEl.hidden = true;
+previewCanvasEl.hidden = true;
 setAnalyzePreviewVisual(false);
 
 window.addEventListener("beforeunload", () => {
   stopCameraStream();
-  releasePreviewObjectUrl();
 });
