@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Circle Quality Check</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">Mobile Vision QA</p>
+        <h1>Circle + Texture Inspector</h1>
+        <p class="subhead">
+          Take one photo. Get an instant quality verdict: pass or warning with likely issue.
+        </p>
+      </header>
+
+      <section class="panel settings-panel">
+        <h2>Model Settings</h2>
+        <label for="modelName">Vision Model</label>
+        <input id="modelName" type="text" value="openai/gpt-4o-mini" autocomplete="off" />
+
+        <p class="hint">
+          API key is read from your Vercel environment variable on the server. Pick any image-capable model available in your OpenRouter account.
+        </p>
+      </section>
+
+      <section class="panel capture-panel">
+        <h2>Capture</h2>
+        <div class="camera-wrap">
+          <video id="camera" playsinline autoplay muted></video>
+          <canvas id="snapshot" hidden></canvas>
+          <img id="preview" alt="Captured photo preview" hidden />
+        </div>
+
+        <div class="actions">
+          <button id="startCameraBtn" class="btn secondary">Start Camera</button>
+          <button id="captureBtn" class="btn primary" disabled>Take Photo</button>
+          <button id="retakeBtn" class="btn secondary" disabled>Retake</button>
+          <button id="analyzeBtn" class="btn accent" disabled>Analyze</button>
+        </div>
+
+        <p id="cameraStatus" class="hint">Camera not started.</p>
+      </section>
+
+      <section class="panel result-panel" aria-live="polite">
+        <h2>Result</h2>
+        <div id="resultBadge" class="result-badge pending">
+          <span class="icon" id="resultIcon">…</span>
+          <div>
+            <p class="result-title" id="resultTitle">Waiting for photo</p>
+            <p class="result-text" id="resultText">Take a photo, then tap Analyze.</p>
+          </div>
+        </div>
+        <ul id="issuesList" class="issues-list"></ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
