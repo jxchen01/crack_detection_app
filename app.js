@@ -1,7 +1,7 @@
 const cameraEl = document.getElementById("camera");
 const snapshotEl = document.getElementById("snapshot");
 const previewEl = document.getElementById("preview");
-const modelNameEl = document.getElementById("modelName");
+const modelNameEl = document.getElementById("modelName"); // <select> element — .value gives the chosen model id
 
 const startCameraBtn = document.getElementById("startCameraBtn");
 const captureBtn = document.getElementById("captureBtn");

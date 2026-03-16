@@ -25,10 +25,14 @@
       <section class="panel settings-panel">
         <h2>Model Settings</h2>
         <label for="modelName">Vision Model</label>
-        <input id="modelName" type="text" value="openai/gpt-4o-mini" autocomplete="off" />
+        <select id="modelName">
+          <option value="google/gemini-2.5-pro">Gemini 2.5 Pro — best overall (recommended)</option>
+          <option value="qwen/qwen3-vl-32b-instruct">Qwen3 VL 32B — best for fine-grained inspection</option>
+          <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 — best JSON reliability</option>
+        </select>
 
         <p class="hint">
-          API key is read from your Vercel environment variable on the server. Pick any image-capable model available in your OpenRouter account.
+          API key is read from your Vercel environment variable on the server.
         </p>
       </section>
 
