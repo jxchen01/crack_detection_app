@@ -1,7 +1,5 @@
 const cameraEl = document.getElementById("camera");
 const snapshotEl = document.getElementById("snapshot");
-const previewEl = document.getElementById("preview");
-const previewCanvasEl = document.getElementById("previewCanvas");
 const modelNameEl = document.getElementById("modelName"); // <select> element — .value gives the chosen model id
 const capturePanelEl = document.getElementById("capturePanel");
 const cameraWrapEl = document.getElementById("cameraWrap");
@@ -59,15 +57,11 @@ function setAnalyzePreviewVisual(isAnalyzing) {
 }
 
 function showLiveCamera() {
-  cameraEl.hidden = false;
-  previewEl.hidden = true;
-  previewCanvasEl.hidden = true;
+  cameraEl.play();
 }
 
 function showCapturedPreview() {
-  cameraEl.hidden = true;
-  previewEl.hidden = true;
-  previewCanvasEl.hidden = false;
+  cameraEl.pause();
 }
 
 function setCaptureLocked(locked) {
@@ -179,20 +173,17 @@ function capturePhoto() {
     return;
   }
 
+  // Pause the video element to freeze current frame for preview
+  showCapturedPreview();
+
+  // Draw to snapshot canvas for data URL generation (hidden)
   snapshotEl.width = width;
   snapshotEl.height = height;
-  previewCanvasEl.width = width;
-  previewCanvasEl.height = height;
-
-  const captureCtx = snapshotEl.getContext("2d", { willReadFrequently: true });
-  captureCtx.drawImage(cameraEl, 0, 0, width, height);
-
-  const previewCtx = previewCanvasEl.getContext("2d", { willReadFrequently: true });
-  previewCtx.drawImage(snapshotEl, 0, 0, width, height);
+  const ctx = snapshotEl.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(cameraEl, 0, 0, width, height);
 
   capturedDataUrl = snapshotEl.toDataURL("image/jpeg", 0.9);
 
-  showCapturedPreview();
   stopCameraStream();
   updateCameraToggleLabel();
 
@@ -209,7 +200,6 @@ async function retakePhoto() {
   }
 
   capturedDataUrl = "";
-  previewEl.src = "";
   setAnalyzePreviewVisual(false);
   setStatus("Retake mode active. Opening camera...");
   await startCamera();
@@ -319,11 +309,8 @@ function clearScreen() {
   updateCameraToggleLabel();
 
   capturedDataUrl = "";
-  previewEl.src = "";
   setAnalyzePreviewVisual(false);
-  previewEl.hidden = true;
-  previewCanvasEl.hidden = true;
-  cameraEl.hidden = true;
+  showLiveCamera();
 
   setCaptureLocked(false);
   resetResultPanel();
@@ -338,7 +325,6 @@ clearResultBtn.addEventListener("click", clearScreen);
 
 updateCameraToggleLabel();
 cameraEl.hidden = true;
-previewCanvasEl.hidden = true;
 setAnalyzePreviewVisual(false);
 
 window.addEventListener("beforeunload", () => {
