@@ -84,6 +84,15 @@ h1 {
   animation-delay: 150ms;
 }
 
+.capture-panel.is-locked {
+  opacity: 0.58;
+  filter: saturate(0.7);
+}
+
+.capture-panel.is-locked .actions button {
+  pointer-events: none;
+}
+
 .result-panel {
   animation-delay: 210ms;
 }
@@ -274,6 +283,10 @@ video,
 .issues-list li {
   margin: 0.35rem 0;
   color: #27443b;
+}
+
+.result-actions {
+  margin-top: 0.7rem;
 }
 
 @media (min-width: 700px) {

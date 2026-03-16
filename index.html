@@ -36,7 +36,7 @@
         </p>
       </section>
 
-      <section class="panel capture-panel">
+      <section id="capturePanel" class="panel capture-panel">
         <h2>Capture</h2>
         <div class="camera-wrap">
           <video id="camera" playsinline autoplay muted></video>
@@ -62,6 +62,9 @@
             <p class="result-title" id="resultTitle">Waiting for photo</p>
             <p class="result-text" id="resultText">Take a photo, then tap Analyze.</p>
           </div>
+        </div>
+        <div class="result-actions">
+          <button id="clearResultBtn" class="btn secondary">Clear Screen</button>
         </div>
         <ul id="issuesList" class="issues-list"></ul>
       </section>
