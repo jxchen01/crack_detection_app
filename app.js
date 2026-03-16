@@ -1,6 +1,6 @@
 const cameraEl = document.getElementById("camera");
 const snapshotEl = document.getElementById("snapshot");
-const modelNameEl = document.getElementById("modelName"); // <select> element — .value gives the chosen model id
+const modelNameEl = document.getElementById("modelName");
 const capturePanelEl = document.getElementById("capturePanel");
 const cameraWrapEl = document.getElementById("cameraWrap");
 
@@ -19,7 +19,12 @@ const issuesListEl = document.getElementById("issuesList");
 
 let stream = null;
 let capturedDataUrl = "";
-let captureLocked = false;
+// State machine: "idle" | "live" | "captured" | "analyzing"
+// idle      – no stream, camera area hidden
+// live      – stream active, video playing
+// captured  – stream STILL ACTIVE but video paused; srcObject stays set so frozen frame is visible
+// analyzing – locked while waiting for API response
+let appState = "idle";
 
 const SYSTEM_PROMPT = `You are a strict visual quality inspector.
 Task: inspect ONE photographed object expected to be a circle with uniform texture.
@@ -52,25 +57,30 @@ function setStatus(message) {
   cameraStatusEl.textContent = message;
 }
 
-function setAnalyzePreviewVisual(isAnalyzing) {
+function setAnalyzeVisual(isAnalyzing) {
   cameraWrapEl.classList.toggle("is-analyzing", isAnalyzing);
 }
 
-function showLiveCamera() {
-  cameraEl.play();
-}
+// Single source of truth for all button/panel state — called whenever appState changes.
+function applyState(state) {
+  appState = state;
+  const isIdle      = state === "idle";
+  const isLive      = state === "live";
+  const isCaptured  = state === "captured";
+  const isAnalyzing = state === "analyzing";
 
-function showCapturedPreview() {
-  cameraEl.pause();
-}
+  cameraEl.hidden = isIdle;
 
-function setCaptureLocked(locked) {
-  captureLocked = locked;
-  capturePanelEl.classList.toggle("is-locked", locked);
-  startCameraBtn.disabled = locked;
-  captureBtn.disabled = locked || !stream || Boolean(capturedDataUrl);
-  retakeBtn.disabled = locked || !Boolean(capturedDataUrl);
-  analyzeBtn.disabled = locked || !Boolean(capturedDataUrl);
+  // Start/Stop Camera: disabled in "captured" (would destroy preview) and during analysis
+  startCameraBtn.textContent = isLive ? "Stop Camera" : "Start Camera";
+  startCameraBtn.disabled = isCaptured || isAnalyzing;
+
+  captureBtn.disabled  = !isLive;
+  retakeBtn.disabled   = !isCaptured;
+  analyzeBtn.disabled  = !isCaptured;
+
+  capturePanelEl.classList.toggle("is-locked", isAnalyzing);
+  setAnalyzeVisual(isAnalyzing);
 }
 
 function stopCameraStream() {
@@ -83,10 +93,6 @@ function stopCameraStream() {
   cameraEl.srcObject = null;
 }
 
-function updateCameraToggleLabel() {
-  startCameraBtn.textContent = stream ? "Stop Camera" : "Start Camera";
-}
-
 function resetResultPanel() {
   setResult("pending", "Waiting for photo", "Take a photo, then tap Analyze.");
 }
@@ -96,7 +102,7 @@ function setResult(state, title, text, issues = []) {
   resultBadgeEl.classList.add(state);
   resultTitleEl.textContent = title;
   resultTextEl.textContent = text;
-  resultIconEl.textContent = state === "pass" ? "✓" : state === "warning" ? "!" : "…";
+  resultIconEl.textContent = state === "pass" ? "\u2713" : state === "warning" ? "!" : "\u2026";
 
   issuesListEl.innerHTML = "";
   issues.forEach((issue) => {
@@ -107,61 +113,44 @@ function setResult(state, title, text, issues = []) {
 }
 
 async function startCamera() {
-  if (captureLocked) {
-    return;
-  }
-
-  if (stream) {
+  // Only allow toggle from "live" or "idle" states
+  if (appState === "live") {
     stopCameraStream();
-    updateCameraToggleLabel();
-
-    cameraEl.hidden = true;
-    captureBtn.disabled = true;
-    retakeBtn.disabled = !capturedDataUrl;
-    analyzeBtn.disabled = !capturedDataUrl;
-
-    setStatus(capturedDataUrl ? "Camera stopped. You can Analyze, or Start Camera and retake." : "Camera stopped.");
+    capturedDataUrl = "";
+    applyState("idle");
+    setStatus("Camera stopped. Tap Start Camera to begin.");
     return;
   }
+
+  if (appState !== "idle") return;
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStatus("Camera API is not available in this browser.");
+    setStatus("Camera API not available in this browser.");
     return;
   }
-
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
         width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        height: { ideal: 1080 },
       },
-      audio: false
+      audio: false,
     });
-
     cameraEl.srcObject = stream;
     await cameraEl.play();
-    updateCameraToggleLabel();
-
-    showLiveCamera();
-    setAnalyzePreviewVisual(false);
-
-    captureBtn.disabled = false;
-    retakeBtn.disabled = true;
-    analyzeBtn.disabled = true;
-
     capturedDataUrl = "";
+    applyState("live");
     setStatus("Camera ready. Frame the object and tap Take Photo.");
   } catch (error) {
     stopCameraStream();
-    updateCameraToggleLabel();
+    applyState("idle");
     setStatus(`Could not access camera: ${error.message}`);
   }
 }
 
 function capturePhoto() {
-  if (!stream) {
-    setStatus("Start camera first.");
+  if (appState !== "live") {
     return;
   }
 
@@ -173,36 +162,29 @@ function capturePhoto() {
     return;
   }
 
-  // Pause the video element to freeze current frame for preview
-  showCapturedPreview();
-
-  // Draw to snapshot canvas for data URL generation (hidden)
+  // Draw current frame to the hidden canvas — generates the API payload only, never shown.
   snapshotEl.width = width;
   snapshotEl.height = height;
-  const ctx = snapshotEl.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(cameraEl, 0, 0, width, height);
-
+  snapshotEl.getContext("2d", { willReadFrequently: true }).drawImage(cameraEl, 0, 0, width, height);
   capturedDataUrl = snapshotEl.toDataURL("image/jpeg", 0.9);
 
-  stopCameraStream();
-  updateCameraToggleLabel();
+  // Pause WITHOUT stopping the stream. srcObject stays set → frozen frame remains visible.
+  cameraEl.pause();
 
-  captureBtn.disabled = true;
-  retakeBtn.disabled = false;
-  analyzeBtn.disabled = false;
-
-  setStatus("Photo captured. Tap Analyze.");
+  applyState("captured");
+  setStatus("Photo captured. Tap Analyze to inspect, or Retake.");
 }
 
 async function retakePhoto() {
-  if (captureLocked) {
+  if (appState !== "captured") {
     return;
   }
 
   capturedDataUrl = "";
-  setAnalyzePreviewVisual(false);
-  setStatus("Retake mode active. Opening camera...");
-  await startCamera();
+  // Stream is still alive — just resume playback, no getUserMedia needed.
+  await cameraEl.play();
+  applyState("live");
+  setStatus("Camera ready. Frame the object and tap Take Photo.");
 }
 
 function extractJson(text) {
@@ -236,22 +218,16 @@ function normalizeResponse(payload) {
 }
 
 async function analyzePhoto() {
+  if (appState !== "captured") {
+    return;
+  }
   const modelName = modelNameEl.value.trim();
-
   if (!modelName) {
-    setStatus("Enter a model name.");
+    setStatus("Select a model.");
     return;
   }
 
-  if (!capturedDataUrl) {
-    setStatus("Capture a photo before analysis.");
-    return;
-  }
-
-  showCapturedPreview();
-  setAnalyzePreviewVisual(true);
-  setCaptureLocked(true);
-
+  applyState("analyzing");
   setStatus("Analyzing image with model...");
   setResult("pending", "Analyzing", "Please wait while the model inspects the photo.");
 
@@ -298,34 +274,27 @@ async function analyzePhoto() {
     setResult("warning", "Analysis failed", error.message);
     setStatus("Analysis failed. Tap Clear Screen to reset, then try again.");
   } finally {
-    setAnalyzePreviewVisual(false);
     stopCameraStream();
-    updateCameraToggleLabel();
+    applyState("idle");
   }
 }
 
 function clearScreen() {
   stopCameraStream();
-  updateCameraToggleLabel();
-
   capturedDataUrl = "";
-  setAnalyzePreviewVisual(false);
-  showLiveCamera();
-
-  setCaptureLocked(false);
+  applyState("idle");
   resetResultPanel();
   setStatus("Screen cleared. Tap Start Camera to begin.");
 }
 
-startCameraBtn.addEventListener("click", startCamera);
+startCameraBtn.addEventListener("click", startCamera); // startCamera renamed to handle toggle
 captureBtn.addEventListener("click", capturePhoto);
 retakeBtn.addEventListener("click", retakePhoto);
 analyzeBtn.addEventListener("click", analyzePhoto);
 clearResultBtn.addEventListener("click", clearScreen);
 
-updateCameraToggleLabel();
-cameraEl.hidden = true;
-setAnalyzePreviewVisual(false);
+applyState("idle");
+resetResultPanel();
 
 window.addEventListener("beforeunload", () => {
   stopCameraStream();
