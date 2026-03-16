@@ -1,4 +1,5 @@
 const cameraEl = document.getElementById("camera");
+const photoPreviewEl = document.getElementById("photoPreview");
 const snapshotEl = document.getElementById("snapshot");
 const modelNameEl = document.getElementById("modelName"); // <select> element — .value gives the chosen model id
 const capturePanelEl = document.getElementById("capturePanel");
@@ -20,6 +21,8 @@ const issuesListEl = document.getElementById("issuesList");
 let stream = null;
 let capturedDataUrl = "";
 let captureLocked = false;
+let videoWidth = 0;
+let videoHeight = 0;
 
 const SYSTEM_PROMPT = `You are a strict visual quality inspector.
 Task: inspect ONE photographed object expected to be a circle with uniform texture.
@@ -57,11 +60,16 @@ function setAnalyzePreviewVisual(isAnalyzing) {
 }
 
 function showLiveCamera() {
-  cameraEl.play();
+  cameraEl.style.display = "";
+  photoPreviewEl.style.display = "none";
 }
 
 function showCapturedPreview() {
-  cameraEl.pause();
+  if (capturedDataUrl) {
+    photoPreviewEl.src = capturedDataUrl;
+  }
+  photoPreviewEl.style.display = "";
+  cameraEl.style.display = "none";
 }
 
 function setCaptureLocked(locked) {
@@ -81,6 +89,8 @@ function stopCameraStream() {
   stream.getTracks().forEach((track) => track.stop());
   stream = null;
   cameraEl.srcObject = null;
+  videoWidth = 0;
+  videoHeight = 0;
 }
 
 function updateCameraToggleLabel() {
@@ -115,7 +125,7 @@ async function startCamera() {
     stopCameraStream();
     updateCameraToggleLabel();
 
-    cameraEl.hidden = true;
+    cameraEl.style.display = "none";
     captureBtn.disabled = true;
     retakeBtn.disabled = !capturedDataUrl;
     analyzeBtn.disabled = !capturedDataUrl;
@@ -140,6 +150,41 @@ async function startCamera() {
     });
 
     cameraEl.srcObject = stream;
+
+    // Pre-allocate dimensions once the stream metadata is available
+    await new Promise((resolve, reject) => {
+      let settled = false;
+
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cameraEl.onloadedmetadata = null;
+        cameraEl.onerror = null;
+        reject(new Error("Timed out waiting for camera metadata."));
+      }, 5000);
+
+      cameraEl.onloadedmetadata = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        cameraEl.onloadedmetadata = null;
+        cameraEl.onerror = null;
+        videoWidth = cameraEl.videoWidth;
+        videoHeight = cameraEl.videoHeight;
+        resolve();
+      };
+
+      cameraEl.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        cameraEl.onloadedmetadata = null;
+        cameraEl.onerror = null;
+        const mediaErr = cameraEl.error;
+        reject(new Error(mediaErr ? `Video error (code ${mediaErr.code}): ${mediaErr.message}` : "Unknown video element error."));
+      };
+    });
+
     await cameraEl.play();
     updateCameraToggleLabel();
 
@@ -151,6 +196,7 @@ async function startCamera() {
     analyzeBtn.disabled = true;
 
     capturedDataUrl = "";
+    photoPreviewEl.src = "";
     setStatus("Camera ready. Frame the object and tap Take Photo.");
   } catch (error) {
     stopCameraStream();
@@ -165,18 +211,15 @@ function capturePhoto() {
     return;
   }
 
-  const width = cameraEl.videoWidth;
-  const height = cameraEl.videoHeight;
+  const width = videoWidth || cameraEl.videoWidth;
+  const height = videoHeight || cameraEl.videoHeight;
 
   if (!width || !height) {
     setStatus("Camera stream not ready yet. Try again.");
     return;
   }
 
-  // Pause the video element to freeze current frame for preview
-  showCapturedPreview();
-
-  // Draw to snapshot canvas for data URL generation (hidden)
+  // Draw the current frame to the hidden canvas for data-URL generation
   snapshotEl.width = width;
   snapshotEl.height = height;
   const ctx = snapshotEl.getContext("2d", { willReadFrequently: true });
@@ -184,14 +227,14 @@ function capturePhoto() {
 
   capturedDataUrl = snapshotEl.toDataURL("image/jpeg", 0.9);
 
-  stopCameraStream();
-  updateCameraToggleLabel();
+  // Show the captured image; the camera stream stays running for retakes
+  showCapturedPreview();
 
   captureBtn.disabled = true;
   retakeBtn.disabled = false;
   analyzeBtn.disabled = false;
 
-  setStatus("Photo captured. Tap Analyze.");
+  setStatus("Photo captured. Tap Analyze or Retake.");
 }
 
 async function retakePhoto() {
@@ -200,9 +243,21 @@ async function retakePhoto() {
   }
 
   capturedDataUrl = "";
+  photoPreviewEl.src = "";
   setAnalyzePreviewVisual(false);
-  setStatus("Retake mode active. Opening camera...");
-  await startCamera();
+
+  if (stream) {
+    // Camera stream is still running — just switch back to the live feed
+    showLiveCamera();
+    captureBtn.disabled = false;
+    retakeBtn.disabled = true;
+    analyzeBtn.disabled = true;
+    setStatus("Camera ready. Frame the object and tap Take Photo.");
+  } else {
+    // Stream was stopped; reinitialise the camera
+    setStatus("Retake mode active. Opening camera...");
+    await startCamera();
+  }
 }
 
 function extractJson(text) {
@@ -309,8 +364,10 @@ function clearScreen() {
   updateCameraToggleLabel();
 
   capturedDataUrl = "";
+  photoPreviewEl.src = "";
+  photoPreviewEl.style.display = "none";
+  cameraEl.style.display = "none";
   setAnalyzePreviewVisual(false);
-  showLiveCamera();
 
   setCaptureLocked(false);
   resetResultPanel();
@@ -324,7 +381,8 @@ analyzeBtn.addEventListener("click", analyzePhoto);
 clearResultBtn.addEventListener("click", clearScreen);
 
 updateCameraToggleLabel();
-cameraEl.hidden = true;
+cameraEl.style.display = "none";
+photoPreviewEl.style.display = "none";
 setAnalyzePreviewVisual(false);
 
 window.addEventListener("beforeunload", () => {
