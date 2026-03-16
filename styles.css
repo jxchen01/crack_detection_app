@@ -85,12 +85,16 @@ h1 {
 }
 
 .capture-panel.is-locked {
-  opacity: 0.58;
-  filter: saturate(0.7);
+  opacity: 1;
+  filter: none;
 }
 
 .capture-panel.is-locked .actions button {
   pointer-events: none;
+}
+
+.camera-wrap.is-analyzing #preview {
+  filter: brightness(0.72) saturate(0.8);
 }
 
 .result-panel {

@@ -3,6 +3,7 @@ const snapshotEl = document.getElementById("snapshot");
 const previewEl = document.getElementById("preview");
 const modelNameEl = document.getElementById("modelName"); // <select> element — .value gives the chosen model id
 const capturePanelEl = document.getElementById("capturePanel");
+const cameraWrapEl = document.getElementById("cameraWrap");
 
 const startCameraBtn = document.getElementById("startCameraBtn");
 const captureBtn = document.getElementById("captureBtn");
@@ -50,6 +51,20 @@ confidence must be between 0 and 1.`;
 
 function setStatus(message) {
   cameraStatusEl.textContent = message;
+}
+
+function setAnalyzePreviewVisual(isAnalyzing) {
+  cameraWrapEl.classList.toggle("is-analyzing", isAnalyzing);
+}
+
+function showLiveCamera() {
+  cameraEl.hidden = false;
+  previewEl.hidden = true;
+}
+
+function showCapturedPreview() {
+  cameraEl.hidden = true;
+  previewEl.hidden = false;
 }
 
 function setCaptureLocked(locked) {
@@ -131,8 +146,8 @@ async function startCamera() {
     await cameraEl.play();
     updateCameraToggleLabel();
 
-    cameraEl.hidden = false;
-    previewEl.hidden = true;
+    showLiveCamera();
+    setAnalyzePreviewVisual(false);
 
     captureBtn.disabled = false;
     retakeBtn.disabled = true;
@@ -170,8 +185,9 @@ function capturePhoto() {
   capturedDataUrl = snapshotEl.toDataURL("image/jpeg", 0.92);
   previewEl.src = capturedDataUrl;
 
-  cameraEl.hidden = true;
-  previewEl.hidden = false;
+  showCapturedPreview();
+  stopCameraStream();
+  updateCameraToggleLabel();
 
   captureBtn.disabled = true;
   retakeBtn.disabled = false;
@@ -180,23 +196,16 @@ function capturePhoto() {
   setStatus("Photo captured. Tap Analyze.");
 }
 
-function retakePhoto() {
+async function retakePhoto() {
   if (captureLocked) {
     return;
   }
 
-  if (!stream) {
-    setStatus("Start camera to retake.");
-    return;
-  }
-
-  previewEl.hidden = true;
-  cameraEl.hidden = false;
-  captureBtn.disabled = false;
-  retakeBtn.disabled = true;
-  analyzeBtn.disabled = true;
   capturedDataUrl = "";
-  setStatus("Retake mode active. Capture a new photo.");
+  previewEl.src = "";
+  setAnalyzePreviewVisual(false);
+  setStatus("Retake mode active. Opening camera...");
+  await startCamera();
 }
 
 function extractJson(text) {
@@ -242,8 +251,8 @@ async function analyzePhoto() {
     return;
   }
 
-  stopCameraStream();
-  updateCameraToggleLabel();
+  showCapturedPreview();
+  setAnalyzePreviewVisual(true);
   setCaptureLocked(true);
 
   setStatus("Analyzing image with model...");
@@ -291,6 +300,10 @@ async function analyzePhoto() {
   } catch (error) {
     setResult("warning", "Analysis failed", error.message);
     setStatus("Analysis failed. Tap Clear Screen to reset, then try again.");
+  } finally {
+    setAnalyzePreviewVisual(false);
+    stopCameraStream();
+    updateCameraToggleLabel();
   }
 }
 
@@ -300,6 +313,7 @@ function clearScreen() {
 
   capturedDataUrl = "";
   previewEl.src = "";
+  setAnalyzePreviewVisual(false);
   previewEl.hidden = true;
   cameraEl.hidden = true;
 
@@ -316,6 +330,7 @@ clearResultBtn.addEventListener("click", clearScreen);
 
 updateCameraToggleLabel();
 cameraEl.hidden = true;
+setAnalyzePreviewVisual(false);
 
 window.addEventListener("beforeunload", () => {
   stopCameraStream();
